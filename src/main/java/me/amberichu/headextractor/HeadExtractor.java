@@ -240,14 +240,21 @@ public class HeadExtractor {
                     // The ListTag can't store player profiles
                     continue;
                 }
-                if (!listTag.getName().equals("textures")) {
-                    listTag.forEach(tags::addLast);
-                    continue;
-                }
-                if (listTag.size() != 0 && listTag.get(0) instanceof CompoundTag texture) {
-                    if (texture.get("Value") instanceof StringTag valueTag) {
-                        headConsumer.accept(valueTag.getValue());
+                if (listTag.getName().equals("textures")) { // Pre-1.20.5 item component rework
+                    if (listTag.size() != 0 && listTag.get(0) instanceof CompoundTag texture) {
+                        if (texture.get("Value") instanceof StringTag valueTag) {
+                            headConsumer.accept(valueTag.getValue());
+                        }
                     }
+                } else if (listTag.getName().equals("properties")) { // Item component storage system
+                    if (listTag.size() != 0 && listTag.get(0) instanceof CompoundTag texture) {
+                        if (texture.get("name") instanceof StringTag nameTag &&
+                                texture.get("value") instanceof StringTag valueTag) {
+                            if (nameTag.getValue().equals("textures")) headConsumer.accept(valueTag.getValue());
+                        }
+                    }
+                } else { // Scan children of this ListTag
+                    listTag.forEach(tags::addLast);
                 }
             } else if (tag instanceof StringTag stringTag) {
                 processString(stringTag.getValue(), headConsumer);
