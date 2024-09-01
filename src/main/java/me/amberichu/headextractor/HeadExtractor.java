@@ -39,11 +39,7 @@ import java.io.*;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
+import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
@@ -54,6 +50,23 @@ import java.util.zip.GZIPInputStream;
 import java.util.zip.InflaterInputStream;
 
 public class HeadExtractor {
+
+    private static final String USAGE = """
+            HeadExtractor by Amberichu
+            https://github.com/davchoo/HeadExtractor
+            
+            Head Extractor is a tool to extract the player profile from the player heads in a Minecraft world.
+            
+            Usage: java -jar HeadExtractor-<VERSION>-all.jar [OPTIONS] <WORLD DIRECTORIES>
+            
+            Options:
+            --exclude-entities:    Exclude heads carried by entities
+            --exclude-region:      Exclude heads placed in the world and in containers
+            --exclude-playerdata:  Exclude heads in players' inventories
+            --exclude-datapacks:   Exclude base64-encoded player profiles in .json or .mcfunction files in datapacks
+            There is also a corresponding --include option for each of the above.
+            The default behavior is to include all heads.""";
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final ObjectMapper YAML_MAPPER = new ObjectMapper(new YAMLFactory());
 
@@ -61,12 +74,55 @@ public class HeadExtractor {
     private static final Pattern BASE64_PATTERN = Pattern.compile("\\\\?[\"']((?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=))\\\\?[\"']");
 
     public static void main(String[] args) throws IOException {
-        if (args.length != 1) {
-            System.out.println("Please specify one world folder.");
-            System.exit(-1);
+        Set<Path> worldPaths = new HashSet<>();
+        boolean includeEntities = true;
+        boolean includeRegion = true;
+        boolean includePlayerData = true;
+        boolean includeDataPacks = true;
+
+        for (String arg : args) {
+            if (arg.startsWith("--")) {
+                switch (arg) {
+                    case "--include-entities" -> includeEntities = true;
+                    case "--include-region" -> includeRegion = true;
+                    case "--include-playerdata" -> includePlayerData = true;
+                    case "--include-datapacks" -> includeDataPacks = true;
+                    case "--exclude-entities" -> includeEntities = false;
+                    case "--exclude-region" -> includeRegion = false;
+                    case "--exclude-playerdata" -> includePlayerData = false;
+                    case "--exclude-datapacks" -> includeDataPacks = false;
+                    case "--help" -> {
+                        System.out.println(USAGE);
+                        return;
+                    }
+                    default -> {
+                        System.err.println("Unknown option " + arg + ", use --help for help.");
+                        System.exit(1);
+                    }
+                }
+            } else {
+                try {
+                    Path worldPath = Path.of(arg);
+
+                    if (!Files.isDirectory(worldPath)) {
+                        System.err.println("World path " + arg + " does not exist, use --help for help.");
+                        System.exit(1);
+                    }
+
+                    worldPaths.add(worldPath);
+                } catch (InvalidPathException e) {
+                    System.err.println("Invalid world path " + arg + ", use --help for help.");
+                    System.exit(1);
+                }
+            }
         }
 
-        Set<String> heads = extractHeads(Path.of(args[0]));
+        if (worldPaths.isEmpty()) {
+            System.out.println(USAGE);
+            return;
+        }
+
+        Set<String> heads = extractHeads(worldPaths, includeEntities, includeRegion, includePlayerData, includeDataPacks);
         YAML_MAPPER.writeValue(new File("custom-skulls.yml"), new SkinHashesConfig(heads));
     }
 
@@ -80,8 +136,10 @@ public class HeadExtractor {
         }
     }
 
-    private static Set<String> extractHeads(Path worldPath) throws IOException {
+    private static Set<String> extractHeads(Set<Path> worldPaths, boolean includeEntities, boolean includeRegion,
+                                            boolean includePlayerData, boolean includeDataPacks) throws IOException {
         Set<String> heads = ConcurrentHashMap.newKeySet();
+        if (!(includeEntities || includeRegion || includePlayerData || includeDataPacks)) return heads;
 
         ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() - 1);
         List<CompletableFuture<?>> tasks = new ArrayList<>();
@@ -93,13 +151,19 @@ public class HeadExtractor {
             }
         };
 
-        for (Path path : gatherMCA(worldPath)) {
-            tasks.add(CompletableFuture.runAsync(() -> processMCA(path, headConsumer), executor));
+        for (Path worldPath : worldPaths) {
+            if (includeEntities || includeRegion) {
+                for (Path path : gatherMCA(worldPath, includeEntities, includeRegion)) {
+                    tasks.add(CompletableFuture.runAsync(() -> processMCA(path, headConsumer), executor));
+                }
+            }
+            if (includePlayerData) {
+                for (Path path : gatherPlayerData(worldPath)) {
+                    tasks.add(CompletableFuture.runAsync(() -> processDAT(path, headConsumer), executor));
+                }
+            }
+            if (includeDataPacks) gatherFromDataPacks(worldPath, headConsumer);
         }
-        for (Path path : gatherPlayerData(worldPath)) {
-            tasks.add(CompletableFuture.runAsync(() -> processDAT(path, headConsumer), executor));
-        }
-        gatherFromDataPacks(worldPath, headConsumer);
 
         // Wait for all tasks to be complete
         CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).join();
@@ -109,17 +173,18 @@ public class HeadExtractor {
         return heads;
     }
 
-    private static List<Path> gatherMCA(Path worldPath) throws IOException {
+    private static List<Path> gatherMCA(Path worldPath, boolean includeEntities, boolean includeRegion)
+            throws IOException {
         Path entitiesPath = worldPath.resolve("entities");
         Path regionPath = worldPath.resolve("region");
 
         List<Path> mcaPaths = new ArrayList<>();
-        if (Files.isDirectory(entitiesPath)) {
+        if (includeEntities && Files.isDirectory(entitiesPath)) {
             try (Stream<Path> stream = Files.list(entitiesPath)) {
                 stream.forEach(mcaPaths::add);
             }
         }
-        if (Files.isDirectory(regionPath)) {
+        if (includeRegion && Files.isDirectory(regionPath)) {
             try (Stream<Path> stream = Files.list(regionPath)) {
                 stream.forEach(mcaPaths::add);
             }
@@ -295,7 +360,7 @@ public class HeadExtractor {
                     return matcher.group(1);
                 }
             }
-            
+
             return null;
         } catch (Exception e) {
             return null;
