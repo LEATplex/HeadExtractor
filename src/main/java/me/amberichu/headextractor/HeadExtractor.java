@@ -49,6 +49,13 @@ import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.InflaterInputStream;
 
+/**
+ * Head Extractor is a tool and library to extract the player profile from the player heads in a Minecraft world.
+ * <p>
+ * This is accomplished somewhat inefficiently by searching chunk NBT, player data NBT, and entity NBT for lists of
+ * Compound tags that contain a String tag named Value.
+ * In addition, mcfunction and json files in data packs are scanned for Base64 encoded player profiles.
+ */
 public class HeadExtractor {
 
     private static final String USAGE = """
@@ -136,7 +143,17 @@ public class HeadExtractor {
         }
     }
 
-    private static Set<String> extractHeads(Set<Path> worldPaths, boolean includeEntities, boolean includeRegion,
+    /**
+     * Extract player head textures from worlds
+     * @param worldPaths Paths to the worlds to scan
+     * @param includeEntities Whether to scan heads carried by non-player entities
+     * @param includeRegion Whether to scan heads placed in the world or in containers
+     * @param includePlayerData Whether to scan heads carried by players
+     * @param includeDataPacks Whether to scan .json and .mcfunction files in datapacks
+     * @return A set of the base64-encoded player profiles in the given worlds
+     * @throws IOException If an I/O error occurs
+     */
+    public static Set<String> extractHeads(Set<Path> worldPaths, boolean includeEntities, boolean includeRegion,
                                             boolean includePlayerData, boolean includeDataPacks) throws IOException {
         Set<String> heads = ConcurrentHashMap.newKeySet();
         if (!(includeEntities || includeRegion || includePlayerData || includeDataPacks)) return heads;
