@@ -12,6 +12,14 @@ In addition, `mcfunction` and `json` files in data packs are scanned for Base64 
 3. Tool is located at `build/libs/HeadExtractor-<VERSION>-all.jar`
 
 ### Running
-`java -jar HeadExtractor-<VERSION>-all.jar <WORLD DIRECTORY>`
+`java -jar HeadExtractor-<VERSION>-all.jar [OPTIONS] <WORLD DIRECTORIES>`
+
+Options:
+- `--exclude-entities`: Exclude heads carried by entities
+- `--exclude-region`: Exclude heads placed in the world and in containers
+- `--exclude-playerdata`: Exclude heads in players' inventories
+- `--exclude-datapacks`: Exclude base64-encoded player profiles in .json or .mcfunction files in datapacks
+
+There is also a corresponding --include option for each of the above. The default behavior is to include all heads.
 
 Player profiles are sent line by line to standard output. 
