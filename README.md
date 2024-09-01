@@ -1,6 +1,6 @@
 ## Head Extractor
 
-Head Extractor is a tool to extract the player profile from the player heads in a Minecraft world.
+Head Extractor is a tool and library to extract the player profile from the player heads in a Minecraft world.
 
 This is accomplished somewhat inefficiently by searching chunk NBT, player data NBT, and entity NBT for lists of
 Compound tags that contain a String tag named `Value`.\
@@ -23,3 +23,38 @@ Options:
 There is also a corresponding --include option for each of the above. The default behavior is to include all heads.
 
 Player profiles are sent line by line to standard output. 
+
+### Library usage
+You can include this library in your project from [jitpack.io](https://jitpack.io/)!
+
+- Gradle:
+  - Add `maven { url 'https://jitpack.io' }` to the end of your repositories section
+  - Add the dependency `implementation 'com.github.<user>:HeadExtractor:<version>'`
+    - Replace `<user>` with the owner of the fork you would like to use
+    - Replace `<version>` with the tag of the GitHub Release you would like to use
+      - You can also use `main-SNAPSHOT` to take the latest commit from `main`
+- Maven:
+  - Add the repository to the end of your repositories section:
+    ```xml
+    <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+    </repository>
+    ```
+  - Add the dependency:
+    ```xml
+    <dependency>
+	    <groupId>com.github.User</groupId>
+	    <artifactId>HeadExtractor</artifactId>
+	    <version>Version</version>
+    </dependency>
+    ```
+    - Replace `User` with the owner of the fork you would like to use
+    - Replace `Version` with the tag of the GitHub Release you would like to use
+        - You can also use `main-SNAPSHOT` to take the latest commit from `main`
+
+You can also include the compiled jar as a library using your preferred method.
+
+Once you've included the library, all you need to do is call 
+`me.amberichu.headextractor.HeadExtractor#extractHeads(Set<Path> worldPaths, boolean includeEntities,
+boolean includeRegion, boolean includePlayerData, boolean includeDataPacks)`!
